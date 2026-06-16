@@ -1,7 +1,7 @@
 /* Offline-first service worker for the Factura PWA.
    The app is fully self-contained (QR library inlined), so we just cache
    the shell files. Bump CACHE when you change index.html. */
-const CACHE = 'factura-v1';
+const CACHE = 'factura-v2';
 const ASSETS = [
   './',
   './index.html',

@@ -149,6 +149,19 @@
     font-size:14px; opacity:0; transition:opacity .2s; pointer-events:none; z-index:99;
   }
   .toast.show{opacity:1;}
+
+  /* ---------- Install help modal ---------- */
+  .instModal{
+    position:fixed; inset:0; z-index:70; background:rgba(0,0,0,.5);
+    display:flex; align-items:center; justify-content:center; padding:20px;
+  }
+  .instModal[hidden]{display:none;}
+  .instCard{
+    background:#fff; border-radius:16px; width:100%; max-width:420px; padding:22px;
+  }
+  .instCard .instTitle{font-size:19px; font-weight:800; margin-bottom:12px; color:var(--text);}
+  .instCard .instBody{font-size:15px; line-height:1.55; color:var(--text);}
+  .instCard .saveBtn{margin-top:20px;}
 </style>
 </head>
 <body>
@@ -160,6 +173,7 @@
     <div class="title" id="dTitle">FACTURA</div>
     <div class="spacer"></div>
     <button class="chip" id="langChip">ES</button>
+    <button class="iconbtn" id="installBtn" aria-label="install" hidden>&#11015;</button>
     <button class="iconbtn" id="openSettings" aria-label="settings">&#9881;</button>
   </header>
   <main class="cols">
@@ -214,6 +228,15 @@
   <div class="ovNav">
     <button id="ovPrev">&#8249;</button>
     <button id="ovNext">&#8250;</button>
+  </div>
+</div>
+
+<!-- ============ INSTALL HELP MODAL ============ -->
+<div id="installHelp" class="instModal" hidden>
+  <div class="instCard">
+    <div class="instTitle" id="instTitle"></div>
+    <div class="instBody" id="instBody"></div>
+    <button class="saveBtn" id="instClose"></button>
   </div>
 </div>
 
@@ -2525,15 +2548,20 @@ const LANGUAGES = {de:'Deutsch', fr:'Français', en:'English', es:'Español', hu
 
 const LABELS = {
   de:{title:'RECHNUNG', company:'Firmenname', taxId:'USt-IdNr. / Steuernummer', address:'Adresse',
-      settings:'Einstellungen', language:'Sprache', save:'Speichern', saved:'Gespeichert', empty:'— nicht festgelegt —', tap:'Zum Scannen tippen'},
+      settings:'Einstellungen', language:'Sprache', save:'Speichern', saved:'Gespeichert', empty:'— nicht festgelegt —', tap:'Zum Scannen tippen',
+      instTitle:'App installieren', instIOS:'Tippe auf „Teilen“ und dann „Zum Home-Bildschirm“.', instMac:'In Safari: Menü „Ablage“ → „Zum Dock hinzufügen“. In Chrome/Edge: Installationssymbol in der Adressleiste anklicken.', instOther:'Browser-Menü öffnen und „App installieren“ wählen.', instClose:'OK'},
   fr:{title:'FACTURE', company:"Nom de l'entreprise", taxId:'Numéro de TVA', address:'Adresse',
-      settings:'Paramètres', language:'Langue', save:'Enregistrer', saved:'Enregistré', empty:'— non défini —', tap:'Toucher pour scanner'},
+      settings:'Paramètres', language:'Langue', save:'Enregistrer', saved:'Enregistré', empty:'— non défini —', tap:'Toucher pour scanner',
+      instTitle:"Installer l'application", instIOS:'Appuyez sur Partager, puis « Sur l’écran d’accueil ».', instMac:'Dans Safari : menu Fichier → « Ajouter au Dock ». Dans Chrome/Edge : cliquez sur l’icône d’installation dans la barre d’adresse.', instOther:'Ouvrez le menu du navigateur et choisissez « Installer l’application ».', instClose:'OK'},
   en:{title:'INVOICE', company:'Company name', taxId:'Tax ID / VAT', address:'Address',
-      settings:'Settings', language:'Language', save:'Save', saved:'Saved', empty:'— not set —', tap:'Tap to scan'},
+      settings:'Settings', language:'Language', save:'Save', saved:'Saved', empty:'— not set —', tap:'Tap to scan',
+      instTitle:'Install app', instIOS:'Tap the Share button, then “Add to Home Screen”.', instMac:'In Safari: File menu → “Add to Dock”. In Chrome/Edge: click the install icon in the address bar.', instOther:'Open your browser menu and choose “Install app” / “Add to Home screen”.', instClose:'Got it'},
   es:{title:'FACTURA', company:'Nombre de la empresa', taxId:'NIF / CIF', address:'Dirección',
-      settings:'Ajustes', language:'Idioma', save:'Guardar', saved:'Guardado', empty:'— sin definir —', tap:'Toca para escanear'},
+      settings:'Ajustes', language:'Idioma', save:'Guardar', saved:'Guardado', empty:'— sin definir —', tap:'Toca para escanear',
+      instTitle:'Instalar app', instIOS:'Pulsa el botón Compartir y luego “Añadir a pantalla de inicio”.', instMac:'En Safari: menú Archivo → “Añadir al Dock”. En Chrome/Edge: pulsa el icono de instalar en la barra de direcciones.', instOther:'Abre el menú del navegador y elige “Instalar app”.', instClose:'Entendido'},
   hu:{title:'SZÁMLA', company:'Cégnév', taxId:'Adószám', address:'Cím',
-      settings:'Beállítások', language:'Nyelv', save:'Mentés', saved:'Mentve', empty:'— nincs megadva —', tap:'Koppints a beolvasáshoz'}
+      settings:'Beállítások', language:'Nyelv', save:'Mentés', saved:'Mentve', empty:'— nincs megadva —', tap:'Koppints a beolvasáshoz',
+      instTitle:'Alkalmazás telepítése', instIOS:'Koppints a Megosztás gombra, majd „Hozzáadás a kezdőképernyőhöz”.', instMac:'Safariban: Fájl menü → „Hozzáadás a Dockhoz”. Chrome/Edge: kattints a telepítés ikonra a címsorban.', instOther:'Nyisd meg a böngésző menüjét és válaszd az „Alkalmazás telepítése” lehetőséget.', instClose:'Rendben'}
 };
 
 const FIELDS = ['company','taxId','address'];
@@ -2692,6 +2720,50 @@ document.getElementById('ovNext').onclick = (e)=>{ e.stopPropagation(); overlayI
 document.getElementById('overlay').onclick = closeOverlay;
 document.querySelector('#overlay .ovQr').onclick = (e)=> e.stopPropagation();
 window.addEventListener('orientationchange', ()=> setTimeout(renderDisplay, 250));
+
+/* ---------------- PWA install ---------------- */
+let deferredPrompt = null;
+const installBtn = document.getElementById('installBtn');
+const isStandalone = ()=>
+  window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+
+function showInstallBtn(){ if(!isStandalone()) installBtn.hidden = false; }
+function hideInstallBtn(){ installBtn.hidden = true; }
+
+window.addEventListener('beforeinstallprompt', (e)=>{
+  e.preventDefault();          // keep the gesture so our button can trigger it later
+  deferredPrompt = e;
+  showInstallBtn();
+});
+window.addEventListener('appinstalled', ()=>{ deferredPrompt = null; hideInstallBtn(); });
+
+function openInstallHelp(){
+  const L = LABELS[state.lang];
+  const ua = navigator.userAgent;
+  const isIOS = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  const isMac = /Macintosh/.test(ua);
+  document.getElementById('instTitle').textContent = L.instTitle;
+  document.getElementById('instBody').textContent  = isIOS ? L.instIOS : (isMac ? L.instMac : L.instOther);
+  document.getElementById('instClose').textContent = L.instClose;
+  document.getElementById('installHelp').hidden = false;
+}
+
+installBtn.onclick = async ()=>{
+  if(deferredPrompt){
+    deferredPrompt.prompt();
+    try{ await deferredPrompt.userChoice; }catch(e){}
+    deferredPrompt = null;
+    hideInstallBtn();
+  } else {
+    openInstallHelp();         // Safari (iOS/macOS) etc. — show manual steps
+  }
+};
+document.getElementById('instClose').onclick = ()=>{ document.getElementById('installHelp').hidden = true; };
+document.getElementById('installHelp').onclick = (e)=>{ if(e.target.id==='installHelp') e.target.hidden = true; };
+
+// Browsers without beforeinstallprompt (Safari/Firefox) never fire the event,
+// so surface the button immediately and route them to manual instructions.
+if(!isStandalone() && !('onbeforeinstallprompt' in window)) showInstallBtn();
 
 /* ---------------- boot ---------------- */
 renderDisplay();
